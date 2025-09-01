@@ -1,0 +1,56 @@
+Busca uma Rua
+curl 'https://api-prd.brokers.eemovel.com.br/brokers/residents/external/search?Street=Rua+Tabajaras&InitialNumber=70&FinalNumber=70&CityId=4724' \
+  -H 'accept: application/json, text/plain, */*' \
+  -H 'accept-language: pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7' \
+  -H 'authorization: Bearer eyJraWQiOiJEYTNKUDNqVFo0MkxMc0dJcW1RQVROSEtxTWV4TE40NHBlQzhXVG9IVUg4PSIsImFsZyI6IlJTMjU2In0.eyJzdWIiOiI4ZmY0Y2Q0Yy1hOTJiLTQyM2QtOTY1Yi01ZmNmYWM0NTQ4MzkiLCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAudXMtZWFzdC0xLmFtYXpvbmF3cy5jb21cL3VzLWVhc3QtMV9OQnQ4Y0JsdXEiLCJjbGllbnRfaWQiOiIxYjRoNGMyczVxMGJmNXBvczEwamlob2JoZiIsIm9yaWdpbl9qdGkiOiI5YWM3YjA0Yi1kMzNmLTQzMjAtYTk1Ny1mNGM1ZDQ1YmM0ZGMiLCJldmVudF9pZCI6IjQ5MGZkZTc1LTg3MDYtNDk5MS1hNzFiLWI4Nzc1OWM0Y2E0MiIsInRva2VuX3VzZSI6ImFjY2VzcyIsInNjb3BlIjoiYXdzLmNvZ25pdG8uc2lnbmluLnVzZXIuYWRtaW4iLCJhdXRoX3RpbWUiOjE3NTY3MzAxNzAsImV4cCI6MTc1Njc1MTc3MCwiaWF0IjoxNzU2NzMwMTcwLCJqdGkiOiIxNzA5MTkxNi1jNmQyLTQ5NmUtOGYxNi0xNWM1NmQ5NWY4ZWMiLCJ1c2VybmFtZSI6IjhmZjRjZDRjLWE5MmItNDIzZC05NjViLTVmY2ZhYzQ1NDgzOSJ9.mcLnZFx3P5N9WaEVhRyO043YxQk8fRxgJE3qWz778A8q69MokgDgqSrosSlKB6iqsXlSEWEJ8kSCsdEFYXXtoHxYWfsJ-87SKvmPZPEr0Jzei82zhOzHR1I8CW9GPBEoPWxEguOquoWGEohqeAL3a5IydMLAa5_c7f_mppqiHb0W7CneUXLA7WLDhJnnK1uBKxNDyNc5QQ7yCHDUxaDsfe-h_dR96uqyD9uga3X9rPB-rZp5n9eEYwa6ZlP2AC-d_ANC7Pa-C7qHYsXGkNmejYua4NvemOrDRuqekZNmRxeUjw6PCT7uwxa3x0B5yIg72GqUhQ8OL_NeLqYPovy08w' \
+  -H 'impersonate: false' \
+  -H 'origin: https://brokers.eemovel.com.br' \
+  -H 'priority: u=1, i' \
+  -H 'referer: https://brokers.eemovel.com.br/' \
+  -H 'sec-ch-ua: "Not;A=Brand";v="99", "Google Chrome";v="139", "Chromium";v="139"' \
+  -H 'sec-ch-ua-mobile: ?1' \
+  -H 'sec-ch-ua-platform: "Android"' \
+  -H 'sec-fetch-dest: empty' \
+  -H 'sec-fetch-mode: cors' \
+  -H 'sec-fetch-site: same-site' \
+  -H 'user-agent: Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36'
+
+
+Detalhe contato
+curl 'https://api-prd.brokers.eemovel.com.br/brokers/residents/external/contactinfo' \
+  -H 'accept: application/json, text/plain, */*' \
+  -H 'accept-language: pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7' \
+  -H 'authorization: Bearer eyJraWQiOiJEYTNKUDNqVFo0MkxMc0dJcW1RQVROSEtxTWV4TE40NHBlQzhXVG9IVUg4PSIsImFsZyI6IlJTMjU2In0.eyJzdWIiOiI4ZmY0Y2Q0Yy1hOTJiLTQyM2QtOTY1Yi01ZmNmYWM0NTQ4MzkiLCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAudXMtZWFzdC0xLmFtYXpvbmF3cy5jb21cL3VzLWVhc3QtMV9OQnQ4Y0JsdXEiLCJjbGllbnRfaWQiOiIxYjRoNGMyczVxMGJmNXBvczEwamlob2JoZiIsIm9yaWdpbl9qdGkiOiI5YWM3YjA0Yi1kMzNmLTQzMjAtYTk1Ny1mNGM1ZDQ1YmM0ZGMiLCJldmVudF9pZCI6IjQ5MGZkZTc1LTg3MDYtNDk5MS1hNzFiLWI4Nzc1OWM0Y2E0MiIsInRva2VuX3VzZSI6ImFjY2VzcyIsInNjb3BlIjoiYXdzLmNvZ25pdG8uc2lnbmluLnVzZXIuYWRtaW4iLCJhdXRoX3RpbWUiOjE3NTY3MzAxNzAsImV4cCI6MTc1Njc1MTc3MCwiaWF0IjoxNzU2NzMwMTcwLCJqdGkiOiIxNzA5MTkxNi1jNmQyLTQ5NmUtOGYxNi0xNWM1NmQ5NWY4ZWMiLCJ1c2VybmFtZSI6IjhmZjRjZDRjLWE5MmItNDIzZC05NjViLTVmY2ZhYzQ1NDgzOSJ9.mcLnZFx3P5N9WaEVhRyO043YxQk8fRxgJE3qWz778A8q69MokgDgqSrosSlKB6iqsXlSEWEJ8kSCsdEFYXXtoHxYWfsJ-87SKvmPZPEr0Jzei82zhOzHR1I8CW9GPBEoPWxEguOquoWGEohqeAL3a5IydMLAa5_c7f_mppqiHb0W7CneUXLA7WLDhJnnK1uBKxNDyNc5QQ7yCHDUxaDsfe-h_dR96uqyD9uga3X9rPB-rZp5n9eEYwa6ZlP2AC-d_ANC7Pa-C7qHYsXGkNmejYua4NvemOrDRuqekZNmRxeUjw6PCT7uwxa3x0B5yIg72GqUhQ8OL_NeLqYPovy08w' \
+  -H 'content-type: application/json' \
+  -H 'impersonate: false' \
+  -H 'origin: https://brokers.eemovel.com.br' \
+  -H 'priority: u=1, i' \
+  -H 'referer: https://brokers.eemovel.com.br/' \
+  -H 'sec-ch-ua: "Not;A=Brand";v="99", "Google Chrome";v="139", "Chromium";v="139"' \
+  -H 'sec-ch-ua-mobile: ?1' \
+  -H 'sec-ch-ua-platform: "Android"' \
+  -H 'sec-fetch-dest: empty' \
+  -H 'sec-fetch-mode: cors' \
+  -H 'sec-fetch-site: same-site' \
+  -H 'user-agent: Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36' \
+  --data-raw '{"document":"CUZ+s1sb/1wX9s9gqBYVeg==","documentType":"CPF","name":"CARLOS CÉSAR JORDÃO","number":"70","street":"Rua Tabajaras","uf":"SP","cityId":4724,"city":"Americana","neighborhood":"Brieds","complement":"","type":"proprietario","detailing":true}'
+
+
+  Le dados criptografados 
+  curl 'https://api-prd.brokers.eemovel.com.br/brokers/residents/external/contactinfo/read' \
+  -H 'accept: application/json, text/plain, */*' \
+  -H 'accept-language: pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7' \
+  -H 'authorization: Bearer eyJraWQiOiJEYTNKUDNqVFo0MkxMc0dJcW1RQVROSEtxTWV4TE40NHBlQzhXVG9IVUg4PSIsImFsZyI6IlJTMjU2In0.eyJzdWIiOiI4ZmY0Y2Q0Yy1hOTJiLTQyM2QtOTY1Yi01ZmNmYWM0NTQ4MzkiLCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAudXMtZWFzdC0xLmFtYXpvbmF3cy5jb21cL3VzLWVhc3QtMV9OQnQ4Y0JsdXEiLCJjbGllbnRfaWQiOiIxYjRoNGMyczVxMGJmNXBvczEwamlob2JoZiIsIm9yaWdpbl9qdGkiOiI5YWM3YjA0Yi1kMzNmLTQzMjAtYTk1Ny1mNGM1ZDQ1YmM0ZGMiLCJldmVudF9pZCI6IjQ5MGZkZTc1LTg3MDYtNDk5MS1hNzFiLWI4Nzc1OWM0Y2E0MiIsInRva2VuX3VzZSI6ImFjY2VzcyIsInNjb3BlIjoiYXdzLmNvZ25pdG8uc2lnbmluLnVzZXIuYWRtaW4iLCJhdXRoX3RpbWUiOjE3NTY3MzAxNzAsImV4cCI6MTc1Njc1MTc3MCwiaWF0IjoxNzU2NzMwMTcwLCJqdGkiOiIxNzA5MTkxNi1jNmQyLTQ5NmUtOGYxNi0xNWM1NmQ5NWY4ZWMiLCJ1c2VybmFtZSI6IjhmZjRjZDRjLWE5MmItNDIzZC05NjViLTVmY2ZhYzQ1NDgzOSJ9.mcLnZFx3P5N9WaEVhRyO043YxQk8fRxgJE3qWz778A8q69MokgDgqSrosSlKB6iqsXlSEWEJ8kSCsdEFYXXtoHxYWfsJ-87SKvmPZPEr0Jzei82zhOzHR1I8CW9GPBEoPWxEguOquoWGEohqeAL3a5IydMLAa5_c7f_mppqiHb0W7CneUXLA7WLDhJnnK1uBKxNDyNc5QQ7yCHDUxaDsfe-h_dR96uqyD9uga3X9rPB-rZp5n9eEYwa6ZlP2AC-d_ANC7Pa-C7qHYsXGkNmejYua4NvemOrDRuqekZNmRxeUjw6PCT7uwxa3x0B5yIg72GqUhQ8OL_NeLqYPovy08w' \
+  -H 'content-type: application/json' \
+  -H 'impersonate: false' \
+  -H 'origin: https://brokers.eemovel.com.br' \
+  -H 'priority: u=1, i' \
+  -H 'referer: https://brokers.eemovel.com.br/' \
+  -H 'sec-ch-ua: "Not;A=Brand";v="99", "Google Chrome";v="139", "Chromium";v="139"' \
+  -H 'sec-ch-ua-mobile: ?1' \
+  -H 'sec-ch-ua-platform: "Android"' \
+  -H 'sec-fetch-dest: empty' \
+  -H 'sec-fetch-mode: cors' \
+  -H 'sec-fetch-site: same-site' \
+  -H 'user-agent: Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36' \
+  --data-raw '{"data":"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","id":3926439}'
