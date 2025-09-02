@@ -9,16 +9,161 @@ import time
 import random
 from urllib.parse import quote
 import logging
+import os
+from datetime import datetime
+import json
+import threading
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+def safe_strip(value):
+    """Safely strip a value, handling None and non-string types"""
+    if value is None:
+        return ""
+    try:
+        return str(value).strip()
+    except:
+        return ""
+
+class CSVWriterSingleton:
+    """Thread-safe CSV writer singleton for incremental data saving"""
+    _instance = None
+    _lock = threading.Lock()
+    
+    def __new__(cls):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance.initialized = False
+        return cls._instance
+    
+    def __init__(self):
+        if not self.initialized:
+            self.file_handle = None
+            self.csv_writer = None
+            self.filename = None
+            self.fieldnames = [
+                'street', 'number', 'name', 'document', 'city', 'neighborhood', 'uf',
+                'phone_number', 'whatsapp_url'
+            ]
+            self.written_count = 0
+            self.seen_keys = set()
+            self.initialized = True
+    
+    def initialize_file(self, base_filename='broker_contacts'):
+        """Initialize CSV file with timestamp"""
+        if self.file_handle is not None:
+            return self.filename
+            
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        self.filename = f"{base_filename}_{timestamp}.csv"
+        
+        # Create CSV file with headers
+        self.file_handle = open(self.filename, 'w', newline='', encoding='utf-8')
+        self.csv_writer = csv.DictWriter(self.file_handle, fieldnames=self.fieldnames)
+        self.csv_writer.writeheader()
+        self.file_handle.flush()
+        
+        logger.info(f"Initialized CSV file: {self.filename}")
+        
+        return self.filename
+    
+    def format_whatsapp_url(self, phone_number):
+        """Format WhatsApp URL with phone number"""
+        if not phone_number:
+            return ""
+        
+        # Clean phone number - remove all non-digits
+        clean_phone = ''.join(filter(str.isdigit, phone_number))
+        
+        # Add country code if not present (assuming Brazil +55)
+        if len(clean_phone) == 11 and clean_phone.startswith('9'):
+            clean_phone = '55' + clean_phone
+        elif len(clean_phone) == 10:
+            clean_phone = '559' + clean_phone
+        elif not clean_phone.startswith('55'):
+            clean_phone = '55' + clean_phone
+            
+        return f"https://api.whatsapp.com/send?phone={clean_phone}"
+    
+    def write_contact(self, contact_data):
+        """Write a single contact to CSV file immediately"""
+        if self.file_handle is None:
+            self.initialize_file()
+        
+        # Create unique key for deduplication
+        unique_key = (
+            safe_strip(contact_data.get('street')),
+            safe_strip(contact_data.get('number')),
+            safe_strip(contact_data.get('phone_number')),
+            safe_strip(contact_data.get('document'))
+        )
+        
+        # Skip duplicates
+        if unique_key in self.seen_keys:
+            logger.debug(f"Skipping duplicate contact: {contact_data.get('phone_number')}")
+            return False
+        
+        # Validate phone number
+        phone_digits = ''.join(filter(str.isdigit, safe_strip(contact_data.get('phone_number'))))
+        if len(phone_digits) < 10:
+            logger.debug(f"Skipping invalid phone number: {contact_data.get('phone_number')}")
+            return False
+        
+        self.seen_keys.add(unique_key)
+        
+        # Prepare contact data with WhatsApp URL
+        processed_contact = {
+            'street': safe_strip(contact_data.get('street')),
+            'number': safe_strip(contact_data.get('number')),
+            'name': safe_strip(contact_data.get('name')),
+            'document': safe_strip(contact_data.get('document')),
+            'city': safe_strip(contact_data.get('city')),
+            'neighborhood': safe_strip(contact_data.get('neighborhood')),
+            'uf': safe_strip(contact_data.get('uf')),
+            'phone_number': safe_strip(contact_data.get('phone_number')),
+            'whatsapp_url': self.format_whatsapp_url(contact_data.get('phone_number')),
+        }
+        
+        try:
+            self.csv_writer.writerow(processed_contact)
+            self.file_handle.flush()  # Immediately flush to disk
+            self.written_count += 1
+            
+            logger.info(f"Saved contact #{self.written_count}: {processed_contact['name']} - {processed_contact['phone_number']}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error writing contact to CSV: {e}")
+            return False
+    
+    def close(self):
+        """Close file handle"""
+        if self.file_handle:
+            self.file_handle.close()
+            self.file_handle = None
+            logger.info(f"Closed CSV file. Total contacts written: {self.written_count}")
+    
+    def get_stats(self):
+        """Get current statistics"""
+        return {
+            'filename': self.filename,
+            'written_count': self.written_count,
+            'seen_keys_count': len(self.seen_keys)
+        }
 
 class BrokerScraper:
     def __init__(self, bearer_token, delay_config=None):
         self.session = requests.Session()
         self.base_url = "https://api-prd.brokers.eemovel.com.br"
         self.bearer_token = bearer_token
+        self.csv_writer = CSVWriterSingleton()
+        self.error_count = 0
+        self.max_consecutive_errors = 5
+        self.processed_ranges = set()  # Track processed ranges for recovery
 
         # Default delay configuration (more conservative)
         self.default_delays = {
@@ -247,148 +392,131 @@ class BrokerScraper:
         return mobile_contacts
 
     def scrape_street_range(self, street, start_number, end_number, city_id, step=10):
-        """Scrape a range of street numbers"""
-        all_results = []
+        """Scrape a range of street numbers with comprehensive error handling and incremental saving"""
+        # Initialize CSV file if not already done
+        self.csv_writer.initialize_file()
+        
+        total_contacts_saved = 0
+        consecutive_errors = 0
 
         for initial in range(start_number, end_number + 1, step):
             final = min(initial + step - 1, end_number)
+            range_key = f"{street}_{initial}_{final}_{city_id}"
+            
+            # Skip if this range was already processed (for recovery)
+            if range_key in self.processed_ranges:
+                logger.info(f"Skipping already processed range {initial}-{final}")
+                continue
 
-            # Search for residents in this range
-            residents = self.search_residents(street, initial, final, city_id)
+            try:
+                logger.info(f"Processing range {initial}-{final} on {street}")
+                
+                # Search for residents in this range
+                residents = self.search_residents(street, initial, final, city_id)
+                
+                if not residents:
+                    logger.info(f"No residents found in range {initial}-{final}")
+                    self.processed_ranges.add(range_key)
+                    continue
 
-            if residents:
                 logger.info(f"Found {len(residents)} residents in range {initial}-{final}")
 
-                for resident in residents:
-                    # Add delay between requests
-                    self.random_delay('search_delay')
+                for resident_idx, resident in enumerate(residents):
+                    try:
+                        # Add delay between requests
+                        self.random_delay('search_delay')
 
-                    # Get contact info
-                    self.random_delay('contact_delay')
-                    contact_info = self.get_contact_info(resident, default_city_id=city_id)
+                        # Get contact info
+                        self.random_delay('contact_delay')
+                        contact_info = self.get_contact_info(resident, default_city_id=city_id)
 
-                    if contact_info and 'data' in contact_info:
-                        # Read encrypted data
-                        print("requesting decrypted data")
-                        self.random_delay('decrypt_delay')
-                        decrypted_data = self.read_encrypted_data(
-                            contact_info['data'],
-                            contact_info.get('id', 0)
-                        )
+                        if contact_info and 'data' in contact_info:
+                            # Read encrypted data
+                            logger.debug(f"Requesting decrypted data for resident {resident_idx + 1}/{len(residents)}")
+                            self.random_delay('decrypt_delay')
+                            decrypted_data = self.read_encrypted_data(
+                                contact_info['data'],
+                                contact_info.get('id', 0)
+                            )
 
-                        if decrypted_data:
-                            # Extract mobile contacts
-                            mobile_contacts = self.extract_mobile_contacts(decrypted_data)
+                            if decrypted_data:
+                                # Extract mobile contacts
+                                mobile_contacts = self.extract_mobile_contacts(decrypted_data)
 
-                            # Add street and number info to each contact
-                            for contact in mobile_contacts:
-                                contact.update({
-                                    'street': street,
-                                    'number': resident.get('number', ''),
-                                    'name': contact.get('pfData', {}).get('name', ''),
-                                    'city': resident.get('city', ''),
-                                    'neighborhood': resident.get('neighborhood', ''),
-                                    'uf': resident.get('uf', '')
-                                })
-                                all_results.append(contact)
-
-            # Longer delay between search ranges
-            self.random_delay('range_delay')
-
-        return all_results
-
-    def validate_and_deduplicate_contacts(self, contacts):
-        """Validate and deduplicate contact data"""
-        if not contacts:
-            return []
-
-        validated_contacts = []
-        seen_keys = set()
-
-        for contact in contacts:
-            # Skip invalid contacts
-            if not contact.get('phone_number'):
-                logger.debug("Skipping contact without phone number")
+                                # Process each contact immediately
+                                for contact in mobile_contacts:
+                                    contact_data = {
+                                        'street': street,
+                                        'number': safe_strip(resident.get('number')),
+                                        'name': safe_strip(contact.get('pfData', {}).get('name')),
+                                        'document': safe_strip(contact.get('document')),
+                                        'city': safe_strip(resident.get('city')),
+                                        'neighborhood': safe_strip(resident.get('neighborhood')),
+                                        'uf': safe_strip(resident.get('uf')),
+                                        'phone_number': safe_strip(contact.get('phone_number')),
+                                    }
+                                    
+                                    # Write contact immediately to CSV
+                                    if self.csv_writer.write_contact(contact_data):
+                                        total_contacts_saved += 1
+                                        consecutive_errors = 0  # Reset error counter on success
+                            else:
+                                logger.warning(f"Failed to decrypt data for resident in {street} {resident.get('number', '')}")
+                        else:
+                            logger.warning(f"No contact info found for resident in {street} {resident.get('number', '')}")
+                            
+                    except Exception as e:
+                        consecutive_errors += 1
+                        logger.error(f"Error processing resident {resident_idx + 1} in range {initial}-{final}: {e}")
+                        
+                        # If too many consecutive errors, stop processing this range
+                        if consecutive_errors >= self.max_consecutive_errors:
+                            logger.error(f"Too many consecutive errors ({consecutive_errors}), skipping rest of range {initial}-{final}")
+                            break
+                
+                # Mark this range as processed
+                self.processed_ranges.add(range_key)
+                
+                # Longer delay between search ranges
+                self.random_delay('range_delay')
+                
+            except Exception as e:
+                consecutive_errors += 1
+                logger.error(f"Critical error processing range {initial}-{final}: {e}")
+                
+                # If too many consecutive errors across ranges, might need to stop entirely
+                if consecutive_errors >= self.max_consecutive_errors:
+                    logger.error(f"Too many consecutive errors across ranges ({consecutive_errors}), stopping scrape")
+                    break
+                    
+                # Continue to next range on error
                 continue
 
-            # Create a unique key for deduplication
-            unique_key = (
-                contact.get('street', '').strip(),
-                contact.get('number', '').strip(),
-                contact.get('phone_number', '').strip(),
-                contact.get('document', '').strip()
-            )
+        logger.info(f"Completed street range scraping. Total contacts saved: {total_contacts_saved}")
+        return total_contacts_saved
 
-            # Skip duplicates
-            if unique_key in seen_keys:
-                logger.debug(f"Skipping duplicate contact: {contact.get('phone_number')}")
-                continue
-
-            seen_keys.add(unique_key)
-
-            # Validate and clean data
-            validated_contact = {
-                'street': contact.get('street', '').strip(),
-                'number': contact.get('number', '').strip(),
-                'name': contact.get('name', '').strip(),
-                'document': contact.get('document', '').strip(),
-                'city': contact.get('city', '').strip(),
-                'neighborhood': contact.get('neighborhood', '').strip(),
-                'uf': contact.get('uf', '').strip(),
-                'phone_number': contact.get('phone_number', '').strip(),
-                'priority': contact.get('priority', 0),
-                'score': contact.get('score', 0),
-                'plus': contact.get('plus', False),
-                'not_disturb': contact.get('not_disturb', 0)
-            }
-
-            # Only add if phone number is valid (has at least 10 digits)
-            phone_digits = ''.join(filter(str.isdigit, validated_contact['phone_number']))
-            if len(phone_digits) >= 10:
-                validated_contacts.append(validated_contact)
-            else:
-                logger.debug(f"Skipping invalid phone number: {validated_contact['phone_number']}")
-
-        logger.info(f"Validated {len(validated_contacts)} unique contacts from {len(contacts)} raw results")
-        return validated_contacts
-
-    def save_to_csv(self, results, filename='broker_contacts.csv'):
-        """Save results to CSV file with validation and deduplication"""
-        if not results:
-            logger.warning("No results to save")
-            return
-
-        # Validate and deduplicate results
-        validated_results = self.validate_and_deduplicate_contacts(results)
-
-        if not validated_results:
-            logger.warning("No valid results after validation")
-            return
-
-        fieldnames = [
-            'street', 'number', 'name', 'document', 'city', 'neighborhood', 'uf',
-            'phone_number', 'priority', 'score', 'plus', 'not_disturb'
-        ]
-
-        # Create backup if file exists
-        import os
-        if os.path.exists(filename):
-            backup_name = filename.replace('.csv', '_backup.csv')
-            os.rename(filename, backup_name)
-            logger.info(f"Created backup: {backup_name}")
-
-        with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(validated_results)
-
-        logger.info(f"Saved {len(validated_results)} validated contacts to {filename}")
-        return len(validated_results)
+    def cleanup_and_close(self):
+        """Clean up resources and close CSV file"""
+        try:
+            self.csv_writer.close()
+            logger.info("Cleanup completed successfully")
+        except Exception as e:
+            logger.error(f"Error during cleanup: {e}")
+    
+    def get_scraping_stats(self):
+        """Get current scraping statistics"""
+        csv_stats = self.csv_writer.get_stats()
+        return {
+            'csv_file': csv_stats.get('filename', 'Not initialized'),
+            'contacts_saved': csv_stats.get('written_count', 0),
+            'processed_ranges': len(self.processed_ranges),
+            'error_count': self.error_count
+        }
 
 
 def main():
     # Bearer token from the requests.txt file
-    BEARER_TOKEN = "eyJraWQiOiJEYTNKUDNqVFo0MkxMc0dJcW1RQVROSEtxTWV4TE40NHBlQzhXVG9IVUg4PSIsImFsZyI6IlJTMjU2In0.eyJzdWIiOiI4ZmY0Y2Q0Yy1hOTJiLTQyM2QtOTY1Yi01ZmNmYWM0NTQ4MzkiLCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAudXMtZWFzdC0xLmFtYXpvbmF3cy5jb21cL3VzLWVhc3QtMV9OQnQ4Y0JsdXEiLCJjbGllbnRfaWQiOiIxYjRoNGMyczVxMGJmNXBvczEwamlob2JoZiIsIm9yaWdpbl9qdGkiOiIzMGVkZmM0NS0xYjJmLTRjOWItYjg1Mi05Yzg1ZjFlMzM3ZTciLCJldmVudF9pZCI6ImU2NTExYjE2LTdmNDMtNGZhZi1iNDVkLTZhOWViNjViZmE3YyIsInRva2VuX3VzZSI6ImFjY2VzcyIsInNjb3BlIjoiYXdzLmNvZ25pdG8uc2lnbmluLnVzZXIuYWRtaW4iLCJhdXRoX3RpbWUiOjE3NTY3NjYwMjksImV4cCI6MTc1Njc4NzYyOSwiaWF0IjoxNzU2NzY2MDI5LCJqdGkiOiJmZjczZGE3NS1iZTEwLTQ1NjEtYjEyOC0wNDZmOWFmM2JiMzIiLCJ1c2VybmFtZSI6IjhmZjRjZDRjLWE5MmItNDIzZC05NjViLTVmY2ZhYzQ1NDgzOSJ9.TBwJ4bE7bO_TYnhxVsA_b0MY5LR339X_AYQvpVnEQSHywFEI_hFo5TUBEzumsM11ct6tuGF9PFeW9tlBs7LdeB9YCwdE8mOMP9VtLtqbYuHQ33_SWp3dOvPR3ctDaoTky7EbQv5OKGFFnqyNWm72glSGVdaNmnmptCdPRrWHAmVeAKMABqfRnGPoGcD4s7sMJ9Yjrkgg9dgL6BYyqDbiL8rWur6zNHcxcWZ9PFNPD3vMrnYtZUHI-FrNal0S78kl-IvpOv-ECZxlNxPTBIyMKVDTQPzO6Kzs6Cw4CWt8-rN63xdcVlN5tbVCyARLwtmEHzTrmecgBWfo1rwDpqx6Kw"
+    BEARER_TOKEN = ".qGkOChXP1fwmA0a--eSSgb_UMhP9kvnCmNdTFZCVPZ55haQSbyDPLALBl5p7TKRwnDSvUt0Z--sCYU7H1pdxybtExwa0a_OojjWMF9K5oFDN7D2xCHoYcyMvlnW2Phdky7ISkXEI1VgCPPg64OC6doO_rGB2PNJrVKjdUWtvK29wCs-z8O13CPnUG95XWDf6nZtil2MQav1TLt1A9LUySqGRN5Uu1db8tSXK_wUzI50YF0jv_yLY9cxQ"
 
     # Delay configuration - customize delays to avoid detection
     # You can import presets from delay_presets.py or customize here
@@ -409,37 +537,59 @@ def main():
 
     # Configuration - you can modify these
     streets_to_scrape = [
-        #{"name": "Rua Tabajaras", "city_id": 4724, "start": 68, "end": 70},  # Broader range
+        #{"name": "Rua Tabajaras", "city_id": 4724, "start": 70, "end": 70},  # Broader range
        {"name": "Rua Susano", "city_id": 5270, "start": 55, "end": 55},
        
     ]
 
-    all_results = []
+    total_contacts_saved = 0
 
-    for street_config in streets_to_scrape:
-        logger.info(f"Starting scrape for {street_config['name']}")
-        results = scraper.scrape_street_range(
-            street_config['name'],
-            street_config['start'],
-            street_config['end'],
-            street_config['city_id']
-        )
-        all_results.extend(results)
-        logger.info(f"Completed {street_config['name']}, found {len(results)} mobile contacts")
+    try:
+        for street_config in streets_to_scrape:
+            logger.info(f"Starting scrape for {street_config['name']}")
+            
+            try:
+                contacts_saved = scraper.scrape_street_range(
+                    street_config['name'],
+                    street_config['start'],
+                    street_config['end'],
+                    street_config['city_id']
+                )
+                total_contacts_saved += contacts_saved
+                logger.info(f"Completed {street_config['name']}, saved {contacts_saved} contacts")
+                
+            except Exception as e:
+                logger.error(f"Error processing street {street_config['name']}: {e}")
+                logger.info("Continuing with next street...")
+                continue
 
-    # Save all results to CSV with validation
-    saved_count = scraper.save_to_csv(all_results)
-
-    logger.info("=" * 60)
-    logger.info("SCRAPING SUMMARY")
-    logger.info("=" * 60)
-    logger.info(f"Total raw contacts collected: {len(all_results)}")
-    logger.info(f"Valid contacts after validation: {saved_count or 0}")
-    logger.info("Configuration used:")
-    logger.info(f"  - Delay preset: {type(delay_config).__name__}")
-    logger.info(f"  - Streets processed: {len(streets_to_scrape)}")
-    logger.info(f"  - Output file: broker_contacts.csv")
-    logger.info("=" * 60)
+    except KeyboardInterrupt:
+        logger.info("Scraping interrupted by user. Saving current progress...")
+    except Exception as e:
+        logger.error(f"Unexpected error during scraping: {e}")
+    finally:
+        # Always cleanup and close files
+        scraper.cleanup_and_close()
+        
+        # Get final statistics
+        stats = scraper.get_scraping_stats()
+        
+        logger.info("=" * 60)
+        logger.info("SCRAPING SUMMARY")
+        logger.info("=" * 60)
+        logger.info(f"Output file: {stats['csv_file']}")
+        logger.info(f"Total contacts saved: {stats['contacts_saved']}")
+        logger.info(f"Processed ranges: {stats['processed_ranges']}")
+        logger.info(f"Error count: {stats['error_count']}")
+        logger.info("Configuration used:")
+        logger.info(f"  - Delay preset: {type(delay_config).__name__}")
+        logger.info(f"  - Streets configured: {len(streets_to_scrape)}")
+        logger.info("=" * 60)
+        
+        if stats['contacts_saved'] > 0:
+            logger.info(f"✅ Success! Data saved to: {stats['csv_file']}")
+        else:
+            logger.warning("⚠️  No contacts were saved. Check the logs for errors.")
 
 
 if __name__ == "__main__":
